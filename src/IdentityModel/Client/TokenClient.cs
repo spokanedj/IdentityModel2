@@ -1,8 +1,10 @@
 ﻿// Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
+using IdentityModel.Internal;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -17,13 +19,13 @@ namespace IdentityModel.Client
     /// <seealso cref="System.IDisposable" />
     public class TokenClient : IDisposable
     {
+        private bool _disposed;
+        
         /// <summary>
-        /// The client
+        /// The HTTP client
         /// </summary>
         protected HttpClient Client;
-
-        private bool _disposed;
-
+        
         /// <summary>
         /// Initializes a new instance of the <see cref="TokenClient"/> class.
         /// </summary>
@@ -42,9 +44,9 @@ namespace IdentityModel.Client
         /// or
         /// innerHttpMessageHandler
         /// </exception>
-        public TokenClient(string address, HttpMessageHandler innerHttpMessageHandler)
+        public TokenClient(string address, HttpMessageHandler innerHttpMessageHandler = null)
         {
-            if (innerHttpMessageHandler == null) throw new ArgumentNullException(nameof(innerHttpMessageHandler));
+            innerHttpMessageHandler = innerHttpMessageHandler ?? new HttpClientHandler();
 
             Client = new HttpClient(innerHttpMessageHandler);
 
@@ -57,34 +59,14 @@ namespace IdentityModel.Client
         }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="TokenClient"/> class.
+        /// Initializes a new instance of the <see cref="TokenClient" /> class.
         /// </summary>
         /// <param name="address">The address.</param>
         /// <param name="clientId">The client identifier.</param>
         /// <param name="style">The authentication style.</param>
-        public TokenClient(string address, string clientId, AuthenticationStyle style = AuthenticationStyle.PostValues)
-            : this(address, clientId, string.Empty, new HttpClientHandler(), style)
-        { }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="TokenClient"/> class.
-        /// </summary>
-        /// <param name="address">The address.</param>
-        /// <param name="clientId">The client identifier.</param>
-        /// <param name="clientSecret">The client secret.</param>
-        /// <param name="style">The authentication style.</param>
-        public TokenClient(string address, string clientId, string clientSecret, AuthenticationStyle style = AuthenticationStyle.BasicAuthentication)
-            : this(address, clientId, clientSecret, new HttpClientHandler(), style)
-        { }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="TokenClient"/> class.
-        /// </summary>
-        /// <param name="address">The address.</param>
-        /// <param name="clientId">The client identifier.</param>
         /// <param name="innerHttpMessageHandler">The inner HTTP message handler.</param>
-        public TokenClient(string address, string clientId, HttpMessageHandler innerHttpMessageHandler)
-            : this(address, clientId, string.Empty, innerHttpMessageHandler, AuthenticationStyle.PostValues)
+        public TokenClient(string address, string clientId, HttpMessageHandler innerHttpMessageHandler = null, AuthenticationStyle style = AuthenticationStyle.PostValues)
+            : this(address, clientId, string.Empty, style: style, innerHttpMessageHandler: innerHttpMessageHandler)
         { }
 
         /// <summary>
@@ -96,10 +78,10 @@ namespace IdentityModel.Client
         /// <param name="innerHttpMessageHandler">The inner HTTP message handler.</param>
         /// <param name="style">The authentication style.</param>
         /// <exception cref="System.ArgumentNullException">clientId</exception>
-        public TokenClient(string address, string clientId, string clientSecret, HttpMessageHandler innerHttpMessageHandler, AuthenticationStyle style = AuthenticationStyle.BasicAuthentication)
+        public TokenClient(string address, string clientId, string clientSecret, HttpMessageHandler innerHttpMessageHandler = null, AuthenticationStyle style = AuthenticationStyle.BasicAuthentication)
             : this(address, innerHttpMessageHandler)
         {
-            if (string.IsNullOrEmpty(clientId)) throw new ArgumentNullException(nameof(clientId));
+            if (clientId.IsMissing()) throw new ArgumentNullException(nameof(clientId));
 
             AuthenticationStyle = style;
             ClientId = clientId;
@@ -112,7 +94,7 @@ namespace IdentityModel.Client
         /// <value>
         /// The client identifier.
         /// </value>
-        public string ClientId { get; set; }
+        public string ClientId { get; }
 
         /// <summary>
         /// Gets or sets the client secret.
@@ -120,7 +102,15 @@ namespace IdentityModel.Client
         /// <value>
         /// The client secret.
         /// </value>
-        public string ClientSecret { get; set; }
+        public string ClientSecret { get; }
+
+        /// <summary>
+        /// Gets or sets the basic authentication header style.
+        /// </summary>
+        /// <value>
+        /// The basic authentication header style.
+        /// </value>
+        public BasicAuthenticationHeaderStyle BasicAuthenticationHeaderStyle { get; set; } = BasicAuthenticationHeaderStyle.Rfc6749;
 
         /// <summary>
         /// Gets or sets the address.
@@ -128,7 +118,7 @@ namespace IdentityModel.Client
         /// <value>
         /// The address.
         /// </value>
-        public string Address { get; set; }
+        public string Address { get; }
 
         /// <summary>
         /// Gets or sets the authentication style.
@@ -136,7 +126,7 @@ namespace IdentityModel.Client
         /// <value>
         /// The authentication style.
         /// </value>
-        public AuthenticationStyle AuthenticationStyle { get; set; }
+        public AuthenticationStyle AuthenticationStyle { get; }
 
         /// <summary>
         /// Sets the timeout.
@@ -158,16 +148,29 @@ namespace IdentityModel.Client
         /// <param name="form">The form.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns></returns>
-        public virtual async Task<TokenResponse> RequestAsync(IDictionary<string, string> form, CancellationToken cancellationToken = default(CancellationToken))
+        public virtual async Task<TokenResponse> RequestAsync(IDictionary<string, string> form, CancellationToken cancellationToken = default)
         {
             HttpResponseMessage response;
 
-            var request = new HttpRequestMessage(HttpMethod.Post, Address);
-            request.Content = new FormUrlEncodedContent(form);
+            var request = new HttpRequestMessage(HttpMethod.Post, Address)
+            {
+                Content = new FormUrlEncodedContent(form)
+            };
 
             if (AuthenticationStyle == AuthenticationStyle.BasicAuthentication)
             {
-                request.Headers.Authorization = new BasicAuthenticationHeaderValue(ClientId, ClientSecret);
+                if (BasicAuthenticationHeaderStyle == BasicAuthenticationHeaderStyle.Rfc6749)
+                {
+                    request.SetBasicAuthenticationOAuth(ClientId, ClientSecret);
+                }
+                else if (BasicAuthenticationHeaderStyle == BasicAuthenticationHeaderStyle.Rfc2617)
+                {
+                    request.SetBasicAuthentication(ClientId, ClientSecret);
+                }
+                else
+                {
+                    throw new InvalidOperationException("Invalid basic authentication header style");
+                }
             }
 
             try
@@ -179,17 +182,54 @@ namespace IdentityModel.Client
                 return new TokenResponse(ex);
             }
 
+            string content = null;
+            if (response.Content != null)
+            {
+                content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            }
+
             if (response.StatusCode == HttpStatusCode.OK || response.StatusCode == HttpStatusCode.BadRequest)
             {
-                var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 return new TokenResponse(content);
             }
             else
             {
-                return new TokenResponse(response.StatusCode, response.ReasonPhrase);
+                return new TokenResponse(response.StatusCode, response.ReasonPhrase, content);
             }
         }
 
+        /// <summary>
+        /// Merges the explicitly provided values with the extra object
+        /// </summary>
+        /// <param name="explicitValues">The explicit values.</param>
+        /// <param name="extra">The extra.</param>
+        /// <returns></returns>
+        public Dictionary<string, string> Merge(Dictionary<string, string> explicitValues, object extra = null)
+        {
+            var merged = explicitValues;
+
+            if (AuthenticationStyle == AuthenticationStyle.PostValues)
+            {
+                merged.Add(OidcConstants.TokenRequest.ClientId, ClientId);
+
+                if (ClientSecret.IsPresent())
+                {
+                    merged.Add(OidcConstants.TokenRequest.ClientSecret, ClientSecret);
+                }
+            }
+
+            var additionalValues = ValuesHelper.ObjectToDictionary(extra);
+
+            if (additionalValues != null)
+            {
+                merged =
+                    explicitValues.Concat(additionalValues.Where(add => !explicitValues.ContainsKey(add.Key)))
+                                         .ToDictionary(final => final.Key, final => final.Value);
+            }
+
+            return merged;
+        }
+        
         /// <summary>
         /// Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.
         /// </summary>

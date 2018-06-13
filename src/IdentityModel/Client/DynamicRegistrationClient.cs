@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
+using IdentityModel.Internal;
 using Newtonsoft.Json;
 using System;
 using System.Net;
@@ -19,7 +20,7 @@ namespace IdentityModel.Client
     public class DynamicRegistrationClient : IDisposable
     {
         /// <summary>
-        /// The client
+        /// The HTTP client
         /// </summary>
         protected HttpClient Client;
 
@@ -31,7 +32,7 @@ namespace IdentityModel.Client
         /// <value>
         /// The address.
         /// </value>
-        public string Address { get; set; }
+        public string Address { get; }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="DynamicRegistrationClient"/> class.
@@ -85,7 +86,7 @@ namespace IdentityModel.Client
         /// <param name="token">The token.</param>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns></returns>
-        public virtual async Task<RegistrationResponse> RegisterAsync(RegistrationRequest request, string token = null, CancellationToken cancellationToken = default(CancellationToken))
+        public virtual async Task<RegistrationResponse> RegisterAsync(RegistrationRequest request, string token = null, CancellationToken cancellationToken = default)
         {
             HttpResponseMessage response;
 
@@ -94,7 +95,7 @@ namespace IdentityModel.Client
                 Content = new StringContent(JsonConvert.SerializeObject(request), Encoding.UTF8, "application/json")
             };
 
-            if (!string.IsNullOrEmpty(token))
+            if (token.IsPresent())
             {
                 requestMessage.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             }

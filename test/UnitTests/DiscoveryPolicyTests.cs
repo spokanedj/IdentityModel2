@@ -1,6 +1,8 @@
-﻿using FluentAssertions;
+﻿// Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
+// Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
+
+using FluentAssertions;
 using IdentityModel.Client;
-using Microsoft.Extensions.PlatformAbstractions;
 using System;
 using System.IO;
 using System.Net;
@@ -16,14 +18,14 @@ namespace IdentityModel.UnitTests
             if (endpointBase == null) endpointBase = issuer;
             if (alternateEndpointBase == null) alternateEndpointBase = issuer;
 
-            var discoFileName = Path.Combine(PlatformServices.Default.Application.ApplicationBasePath, "documents", "discovery_variable.json");
+            var discoFileName = FileName.Create("discovery_variable.json");
             var raw = File.ReadAllText(discoFileName);
 
             var document = raw.Replace("{issuer}", issuer)
                               .Replace("{endpointBase}", endpointBase)
                               .Replace("{alternateEndpointBase}", alternateEndpointBase);
 
-            var jwksFileName = Path.Combine(PlatformServices.Default.Application.ApplicationBasePath, "documents", "discovery_jwks.json");
+            var jwksFileName = FileName.Create("discovery_jwks.json");
             var jwks = File.ReadAllText(jwksFileName);
 
             var handler = new NetworkHandler(request =>
@@ -40,9 +42,6 @@ namespace IdentityModel.UnitTests
         }
 
         [Theory]
-        [InlineData("http://localhost")]
-        [InlineData("http://LocalHost")]
-        [InlineData("http://127.0.0.1")]
         [InlineData("http://localhost")]
         [InlineData("http://LocalHost")]
         [InlineData("http://127.0.0.1")]
@@ -100,7 +99,10 @@ namespace IdentityModel.UnitTests
         {
             var client = new DiscoveryClient("http://authority", GetHandler("http://authority"))
             {
-                Policy = {RequireHttps = false}
+                Policy =
+                {
+                    RequireHttps = false
+                }
             };
 
             var disco = await client.GetAsync();
@@ -128,14 +130,17 @@ namespace IdentityModel.UnitTests
             disco.IsError.Should().BeFalse();
         }
 
-        
+
         [Fact]
         public async Task invalid_issuer_name_must_return_policy_error()
         {
             var handler = GetHandler("https://differentissuer");
             var client = new DiscoveryClient("https://authority", handler)
             {
-                Policy = {ValidateIssuerName = true}
+                Policy =
+                {
+                    ValidateIssuerName = true
+                }
             };
 
             var disco = await client.GetAsync();
@@ -180,7 +185,28 @@ namespace IdentityModel.UnitTests
             var handler = GetHandler("https://authority");
             var client = new DiscoveryClient("https://authority", handler)
             {
-                Policy = {ValidateIssuerName = true}
+                Policy =
+                {
+                    ValidateIssuerName = true
+                }
+            };
+
+            var disco = await client.GetAsync();
+
+            disco.IsError.Should().BeFalse();
+        }
+
+        [Fact]
+        public async Task authority_comparison_may_be_case_insensitive()
+        {
+            var handler = GetHandler("https://authority/tenantid");
+            var client = new DiscoveryClient("https://authority/TENANTID", handler)
+            {
+                Policy =
+                {
+                    ValidateIssuerName = true,
+                    AuthorityNameComparison = StringComparison.OrdinalIgnoreCase
+                }
             };
 
             var disco = await client.GetAsync();

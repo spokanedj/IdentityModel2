@@ -38,11 +38,8 @@ namespace IdentityModel.Client
         /// <exception cref="System.InvalidOperationException">
         /// Malformed URL
         /// </exception>
-        public static (string authority, string discoveryEndpoint) ParseUrl(string input)
+        public static DiscoveryEndpoint ParseUrl(string input)
         {
-            string discoveryEndpoint = "";
-            string authority = "";
-
             var success = Uri.TryCreate(input, UriKind.Absolute, out var uri);
             if (success == false)
             {
@@ -58,19 +55,18 @@ namespace IdentityModel.Client
 
             if (url.EndsWith(OidcConstants.Discovery.DiscoveryEndpoint, StringComparison.OrdinalIgnoreCase))
             {
-                discoveryEndpoint = url;
-                authority = url.Substring(0, url.Length - OidcConstants.Discovery.DiscoveryEndpoint.Length - 1);
+                return new DiscoveryEndpoint(url.Substring(0, url.Length - OidcConstants.Discovery.DiscoveryEndpoint.Length - 1), url);
             }
             else
             {
-                authority = url;
-                discoveryEndpoint = url.EnsureTrailingSlash() + OidcConstants.Discovery.DiscoveryEndpoint;
+                return new DiscoveryEndpoint(url, url.EnsureTrailingSlash() + OidcConstants.Discovery.DiscoveryEndpoint);
             }
-
-            return (authority, discoveryEndpoint);
         }
 
-        private readonly HttpClient _client;
+        /// <summary>
+        /// The HTTP client
+        /// </summary>
+        protected readonly HttpClient Client;
 
         /// <summary>
         /// Gets the authority.
@@ -106,7 +102,7 @@ namespace IdentityModel.Client
         {
             set
             {
-                _client.Timeout = value;
+                Client.Timeout = value;
             }
         }
 
@@ -119,9 +115,11 @@ namespace IdentityModel.Client
         {
             var handler = innerHandler ?? new HttpClientHandler();
 
-            (Authority, Url) = ParseUrl(authority);
-            
-            _client = new HttpClient(handler);
+            var parsed = ParseUrl(authority);
+            Authority = parsed.Authority;
+            Url = parsed.Url;
+
+            Client = new HttpClient(handler);
         }
 
         /// <summary>
@@ -129,9 +127,13 @@ namespace IdentityModel.Client
         /// </summary>
         /// <param name="cancellationToken">The cancellation token.</param>
         /// <returns></returns>
-        public async Task<DiscoveryResponse> GetAsync(CancellationToken cancellationToken = default(CancellationToken))
+        public virtual async Task<DiscoveryResponse> GetAsync(CancellationToken cancellationToken = default)
         {
-            Policy.Authority = Authority;
+            if (Policy.Authority.IsMissing())
+            {
+                Policy.Authority = Authority;
+            }
+
             string jwkUrl = "";
 
             if (!DiscoveryUrlHelper.IsSecureScheme(new Uri(Url), Policy))
@@ -141,34 +143,43 @@ namespace IdentityModel.Client
 
             try
             {
-                var response = await _client.GetAsync(Url, cancellationToken).ConfigureAwait(false);
+                var response = await Client.GetAsync(Url, cancellationToken).ConfigureAwait(false);
+                string responseContent = null;
+
+                if (response.Content != null)
+                {
+                    responseContent = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                }
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    return new DiscoveryResponse(response.StatusCode, $"Error connecting to {Url}: {response.ReasonPhrase}");
+                    return new DiscoveryResponse(response.StatusCode, $"Error connecting to {Url}: {response.ReasonPhrase}", responseContent);
                 }
 
-                var disco = new DiscoveryResponse(await response.Content.ReadAsStringAsync().ConfigureAwait(false), Policy);
+                var disco = new DiscoveryResponse(responseContent, Policy);
                 if (disco.IsError)
                 {
                     return disco;
                 }
 
-                
                 try
                 {
                     jwkUrl = disco.JwksUri;
                     if (jwkUrl != null)
                     {
-                        response = await _client.GetAsync(jwkUrl, cancellationToken).ConfigureAwait(false);
-
+                        response = await Client.GetAsync(jwkUrl, cancellationToken).ConfigureAwait(false);
+                        
+                        if (response.Content != null)
+                        {
+                            responseContent = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                        }
+                        
                         if (!response.IsSuccessStatusCode)
                         {
-                            return new DiscoveryResponse(response.StatusCode, $"Error connecting to {jwkUrl}: {response.ReasonPhrase}");
+                            return new DiscoveryResponse(response.StatusCode, $"Error connecting to {jwkUrl}: {response.ReasonPhrase}", responseContent);
                         }
 
-                        var jwk = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-                        disco.KeySet = new JsonWebKeySet(jwk);
+                        disco.KeySet = new JsonWebKeySet(responseContent);
                     }
 
                     return disco;
@@ -202,7 +213,7 @@ namespace IdentityModel.Client
             if (disposing && !_disposed)
             {
                 _disposed = true;
-                _client.Dispose();
+                Client.Dispose();
             }
         }
     }

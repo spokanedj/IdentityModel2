@@ -1,6 +1,9 @@
-﻿using FluentAssertions;
+﻿// Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
+// Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
+
+using FluentAssertions;
 using IdentityModel.Client;
-using Microsoft.Extensions.PlatformAbstractions;
+using Microsoft.AspNetCore.WebUtilities;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -71,9 +74,9 @@ namespace IdentityModel.UnitTests
         }
 
         [Fact]
-        public async Task legacy_protocol_response_should_be_handled_correctly()
+        public async Task Legacy_protocol_response_should_be_handled_correctly()
         {
-            var document = File.ReadAllText(Path.Combine(PlatformServices.Default.Application.ApplicationBasePath, "documents", "legacy_success_introspection_response.json"));
+            var document = File.ReadAllText(FileName.Create("legacy_success_introspection_response.json"));
             var handler = new NetworkHandler(document, HttpStatusCode.OK);
 
             var client = new IntrospectionClient(
@@ -112,9 +115,9 @@ namespace IdentityModel.UnitTests
         }
 
         [Fact]
-        public async Task success_protocol_response_should_be_handled_correctly()
+        public async Task Success_protocol_response_should_be_handled_correctly()
         {
-            var document = File.ReadAllText(Path.Combine(PlatformServices.Default.Application.ApplicationBasePath, "documents", "success_introspection_response.json"));
+            var document = File.ReadAllText(FileName.Create("success_introspection_response.json"));
             var handler = new NetworkHandler(document, HttpStatusCode.OK);
 
             var client = new IntrospectionClient(
@@ -154,7 +157,7 @@ namespace IdentityModel.UnitTests
         [Fact]
         public async Task Additional_request_parameters_should_be_handled_correctly()
         {
-            var document = File.ReadAllText(Path.Combine(PlatformServices.Default.Application.ApplicationBasePath, "documents", "success_introspection_response.json"));
+            var document = File.ReadAllText(FileName.Create("success_introspection_response.json"));
             var handler = new NetworkHandler(document, HttpStatusCode.OK);
 
             var client = new IntrospectionClient(
@@ -164,11 +167,22 @@ namespace IdentityModel.UnitTests
 
             var additionalParams = new Dictionary<string, string>
             {
-                { "scope", "scope1 scope2" }
+                { "scope", "scope1 scope2" },
+                { "foo", "bar" }
             };
 
             var response = await client.SendAsync(new IntrospectionRequest { Token = "token", Parameters = additionalParams });
 
+            // check request
+            var fields = QueryHelpers.ParseQuery(handler.Body);
+            fields.Count.Should().Be(4);
+
+            fields["client_id"].First().Should().Be("client");
+            fields["token"].First().Should().Be("token");
+            fields["scope"].First().Should().Be("scope1 scope2");
+            fields["foo"].First().Should().Be("bar");
+
+            // check response
             response.IsError.Should().BeFalse();
             response.ErrorType.Should().Be(ResponseErrorType.None);
             response.HttpStatusCode.Should().Be(HttpStatusCode.OK);

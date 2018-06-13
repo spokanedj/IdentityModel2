@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
+using IdentityModel.Internal;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
@@ -12,40 +13,63 @@ namespace IdentityModel.Client
     /// <summary>
     /// Client for the OAuth 2.0 introspection endpoint
     /// </summary>
-    public class IntrospectionClient
+    public class IntrospectionClient : IDisposable
     {
-        private readonly HttpClient _client;
-        private readonly string _clientId;
+        private bool _disposed;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="IntrospectionClient"/> class.
+        /// The HTTP client
+        /// </summary>
+        protected readonly HttpClient Client;
+
+        /// <summary>
+        /// The client identifier
+        /// </summary>
+        protected readonly string ClientId;
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="IntrospectionClient" /> class.
         /// </summary>
         /// <param name="endpoint">The endpoint.</param>
         /// <param name="clientId">The client identifier.</param>
         /// <param name="clientSecret">The client secret.</param>
         /// <param name="innerHttpMessageHandler">The inner HTTP message handler.</param>
-        /// <exception cref="System.ArgumentNullException">endpoint</exception>
-        public IntrospectionClient(string endpoint, string clientId = "", string clientSecret = "", HttpMessageHandler innerHttpMessageHandler = null)
+        /// <param name="headerStyle">The header style.</param>
+        /// <exception cref="ArgumentNullException">endpoint</exception>
+        /// <exception cref="ArgumentException">Invalid header style - headerStyle</exception>
+        public IntrospectionClient(string endpoint, string clientId = "", string clientSecret = "", HttpMessageHandler innerHttpMessageHandler = null, BasicAuthenticationHeaderStyle headerStyle = BasicAuthenticationHeaderStyle.Rfc6749)
         {
             if (string.IsNullOrWhiteSpace(endpoint)) throw new ArgumentNullException(nameof(endpoint));
             if (innerHttpMessageHandler == null) innerHttpMessageHandler = new HttpClientHandler();
 
-            _client = new HttpClient(innerHttpMessageHandler)
+            Client = new HttpClient(innerHttpMessageHandler)
             {
                 BaseAddress = new Uri(endpoint)
             };
 
-            _client.DefaultRequestHeaders.Accept.Clear();
-            _client.DefaultRequestHeaders.Accept.Add(
+            Client.DefaultRequestHeaders.Accept.Clear();
+            Client.DefaultRequestHeaders.Accept.Add(
                 new MediaTypeWithQualityHeaderValue("application/json"));
 
-            if (!string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(clientSecret))
+            if (clientId.IsPresent() && clientSecret.IsPresent())
             {
-                _client.SetBasicAuthentication(clientId, clientSecret);
+                if (headerStyle == BasicAuthenticationHeaderStyle.Rfc6749)
+                {
+                    Client.SetBasicAuthenticationOAuth(clientId, clientSecret);
+                }
+                else if (headerStyle == BasicAuthenticationHeaderStyle.Rfc2617)
+                {
+                    Client.SetBasicAuthentication(clientId, clientSecret);
+                }
+                else
+                {
+                    throw new ArgumentException("Invalid header style", nameof(headerStyle));
+                }
+                
             }
             else if (!string.IsNullOrWhiteSpace(clientId))
             {
-                _clientId = clientId;
+                ClientId = clientId;
             }
         }
 
@@ -59,7 +83,7 @@ namespace IdentityModel.Client
         {
             set
             {
-                _client.Timeout = value;
+                Client.Timeout = value;
             }
         }
 
@@ -73,10 +97,10 @@ namespace IdentityModel.Client
         /// or
         /// Token
         /// </exception>
-        public async Task<IntrospectionResponse> SendAsync(IntrospectionRequest request)
+        public virtual async Task<IntrospectionResponse> SendAsync(IntrospectionRequest request)
         {
             if (request == null) throw new ArgumentNullException(nameof(request));
-            if (string.IsNullOrWhiteSpace(request.Token)) throw new ArgumentNullException(nameof(request.Token));
+            if (request.Token.IsMissing()) throw new ArgumentNullException(nameof(request.Token));
 
             IDictionary<string, string> form;
             if (request.Parameters == null)
@@ -89,30 +113,23 @@ namespace IdentityModel.Client
             }
 
             form.Add("token", request.Token);
-
-            if (!string.IsNullOrWhiteSpace(request.TokenTypeHint))
-            {
-                form.Add("token_type_hint", request.TokenTypeHint);
-            }
-
-            if (!string.IsNullOrWhiteSpace(request.ClientId))
+            
+            if (request.ClientId.IsPresent())
             {
                 form.Add("client_id", request.ClientId);
             }
-            else if (!string.IsNullOrWhiteSpace(_clientId))
+            else if (ClientId.IsPresent())
             {
-                form.Add("client_id", _clientId);
+                form.Add("client_id", ClientId);
             }
 
-            if (!string.IsNullOrWhiteSpace(request.ClientSecret))
-            {
-                form.Add("client_secret", request.ClientSecret);
-            }
+            form.AddIfPresent("token_type_hint", request.TokenTypeHint);
+            form.AddIfPresent("client_secret", request.ClientSecret);
 
             HttpResponseMessage response;
             try
             {
-                response = await _client.PostAsync("", new FormUrlEncodedContent(form)).ConfigureAwait(false);
+                response = await Client.PostAsync("", new FormUrlEncodedContent(form)).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -125,6 +142,28 @@ namespace IdentityModel.Client
             else
             {
                 return new IntrospectionResponse(response.StatusCode, response.ReasonPhrase);
+            }
+        }
+
+        /// <summary>
+        /// Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.
+        /// </summary>
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        /// Releases unmanaged and - optionally - managed resources.
+        /// </summary>
+        /// <param name="disposing"><c>true</c> to release both managed and unmanaged resources; <c>false</c> to release only unmanaged resources.</param>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing && !_disposed)
+            {
+                _disposed = true;
+                Client.Dispose();
             }
         }
     }

@@ -3,10 +3,22 @@
 
 using System.Diagnostics;
 
-namespace IdentityModel
+namespace IdentityModel.Internal
 {
-    internal static class StringExtensions
+    internal static class InternalStringExtensions
     {
+        [DebuggerStepThrough]
+        public static bool IsMissing(this string value)
+        {
+            return string.IsNullOrWhiteSpace(value);
+        }
+
+        [DebuggerStepThrough]
+        public static bool IsPresent(this string value)
+        {
+            return !(value.IsMissing());
+        }
+
         [DebuggerStepThrough]
         public static string EnsureTrailingSlash(this string url)
         {

@@ -100,7 +100,7 @@ namespace IdentityModel.Client
                 Json = JObject.Parse(raw);
                 var validationError = Validate(policy);
 
-                if (!string.IsNullOrEmpty(validationError))
+                if (validationError.IsPresent())
                 {
                     IsError = true;
                     Json = null;
@@ -131,6 +131,28 @@ namespace IdentityModel.Client
             ErrorType = ResponseErrorType.Http;
             StatusCode = statusCode;
             Error = reason;
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="DiscoveryResponse" /> class.
+        /// </summary>
+        /// <param name="statusCode">The status code.</param>
+        /// <param name="reason">The reason.</param>
+        /// <param name="content">The content.</param>
+        public DiscoveryResponse(HttpStatusCode statusCode, string reason, string content)
+        {
+            IsError = true;
+
+            ErrorType = ResponseErrorType.Http;
+            StatusCode = statusCode;
+            Error = reason;
+            Raw = content;
+
+            try
+            {
+                Json = JObject.Parse(content);
+            }
+            catch { }
         }
 
         /// <summary>
@@ -181,12 +203,12 @@ namespace IdentityModel.Client
             {
                 if (string.IsNullOrWhiteSpace(Issuer)) return "Issuer name is missing";
 
-                var isValid = ValidateIssuerName(Issuer.RemoveTrailingSlash(), policy.Authority.RemoveTrailingSlash());
+                var isValid = ValidateIssuerName(Issuer.RemoveTrailingSlash(), policy.Authority.RemoveTrailingSlash(), policy.AuthorityNameComparison);
                 if (!isValid) return "Issuer name does not match authority: " + Issuer;
             }
 
-            var error = ValidateEndoints(Json, policy);
-            if (!string.IsNullOrEmpty(error)) return error;
+            var error = ValidateEndpoints(Json, policy);
+            if (error.IsPresent()) return error;
 
             return string.Empty;
         }
@@ -199,7 +221,19 @@ namespace IdentityModel.Client
         /// <returns></returns>
         public bool ValidateIssuerName(string issuer, string authority)
         {
-            return string.Equals(issuer, authority, StringComparison.Ordinal);
+            return ValidateIssuerName(issuer, authority, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// Checks if the issuer matches the authority.
+        /// </summary>
+        /// <param name="issuer">The issuer.</param>
+        /// <param name="authority">The authority.</param>
+        /// <param name="nameComparison">The comparison mechanism that should be used when performing the match.</param>
+        /// <returns></returns>
+        public bool ValidateIssuerName(string issuer, string authority, StringComparison nameComparison)
+        {
+            return string.Equals(issuer, authority, nameComparison);
         }
 
         /// <summary>
@@ -208,15 +242,19 @@ namespace IdentityModel.Client
         /// <param name="json">The json.</param>
         /// <param name="policy">The policy.</param>
         /// <returns></returns>
-        public string ValidateEndoints(JObject json, DiscoveryPolicy policy)
+        public string ValidateEndpoints(JObject json, DiscoveryPolicy policy)
         {
             // allowed hosts
-            var allowedHosts = new HashSet<string>(policy.AdditionalEndpointBaseAddresses.Select(e => new Uri(e).Authority));
-            allowedHosts.Add(new Uri(policy.Authority).Authority);
+            var allowedHosts = new HashSet<string>(policy.AdditionalEndpointBaseAddresses.Select(e => new Uri(e).Authority))
+            {
+                new Uri(policy.Authority).Authority
+            };
 
             // allowed authorities (hosts + base address)
-            var allowedAuthorities = new HashSet<string>(policy.AdditionalEndpointBaseAddresses);
-            allowedAuthorities.Add(policy.Authority);
+            var allowedAuthorities = new HashSet<string>(policy.AdditionalEndpointBaseAddresses)
+            {
+                policy.Authority
+            };
 
             foreach (var element in json)
             {
@@ -265,7 +303,7 @@ namespace IdentityModel.Client
                         isAllowed = false;
                         foreach (var authority in allowedAuthorities)
                         {
-                            if (endpoint.StartsWith(authority, StringComparison.Ordinal))
+                            if (endpoint.StartsWith(authority, policy.AuthorityNameComparison))
                             {
                                 isAllowed = true;
                             }

@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
+using IdentityModel.Internal;
 using System;
 using System.Collections.Generic;
 using System.Net;
@@ -108,7 +109,7 @@ namespace IdentityModel.Client
         /// <value>
         ///   <c>true</c> if the response is an error; otherwise, <c>false</c>.
         /// </value>
-        public bool IsError => !string.IsNullOrEmpty(Error);
+        public bool IsError => Error.IsPresent();
 
         /// <summary>
         /// Gets the expires in.
@@ -116,16 +117,14 @@ namespace IdentityModel.Client
         /// <value>
         /// The expires in.
         /// </value>
-        public long ExpiresIn
+        public int ExpiresIn
         {
             get
             {
                 var value = TryGet(OidcConstants.AuthorizeResponse.ExpiresIn);
+                int.TryParse(value, out var theValue);
 
-                long longValue;
-                long.TryParse(value, out longValue);
-
-                return longValue;
+                return theValue;
             }
         }
 
@@ -179,8 +178,7 @@ namespace IdentityModel.Client
         /// <returns></returns>
         public string TryGet(string type)
         {
-            string value;
-            if (Values.TryGetValue(type, out value))
+            if (Values.TryGetValue(type, out var value))
             {
                 return WebUtility.UrlDecode(value);
             }

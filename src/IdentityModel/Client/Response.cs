@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Brock Allen & Dominick Baier. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See LICENSE in the project root for license information.
 
+using IdentityModel.Internal;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Net;
@@ -32,7 +33,7 @@ namespace IdentityModel.Client
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(Error))
+            if (Error.IsMissing())
             {
                 HttpStatusCode = HttpStatusCode.OK;
             }
@@ -58,12 +59,24 @@ namespace IdentityModel.Client
         /// </summary>
         /// <param name="statusCode">The status code.</param>
         /// <param name="reason">The reason.</param>
-        protected Response(HttpStatusCode statusCode, string reason)
+        /// <param name="content">The response body</param>
+        protected Response(HttpStatusCode statusCode, string reason, string content = null)
         {
             HttpStatusCode = statusCode;
             HttpErrorReason = reason;
 
             if (statusCode != HttpStatusCode.OK) ErrorType = ResponseErrorType.Http;
+
+            if (content != null)
+            {
+                Raw = content;
+
+                try
+                {
+                    Json = JObject.Parse(content);
+                }
+                catch { }
+            }
         }
 
         /// <summary>
@@ -96,7 +109,7 @@ namespace IdentityModel.Client
         /// <value>
         ///   <c>true</c> if an error occurred; otherwise, <c>false</c>.
         /// </value>
-        public bool IsError => !string.IsNullOrEmpty(Error);
+        public bool IsError => Error.IsPresent();
 
         /// <summary>
         /// Gets the type of the error.

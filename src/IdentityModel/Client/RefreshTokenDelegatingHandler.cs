@@ -12,15 +12,13 @@ using System.Threading.Tasks;
 namespace IdentityModel.Client
 {
     /// <summary>
-    /// HTTP message handler that encapsulates token handling and refresh
+    /// HTTP message delegating handler that encapsulates token handling and refresh
     /// </summary>
-    [Obsolete("Use AccesTokenDelegatingHandler (that does not create a default " +
-              "inner handler) instead. See " +
-              "https://github.com/IdentityModel/IdentityModel2/pull/110", false)]
-    public class RefreshTokenHandler : DelegatingHandler
+    public class RefreshTokenDelegatingHandler : DelegatingHandler
     {
         private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
         private readonly TokenClient _tokenClient;
+
         private string _accessToken;
         private string _refreshToken;
         private bool _disposed;
@@ -82,7 +80,42 @@ namespace IdentityModel.Client
         public event EventHandler<TokenRefreshedEventArgs> TokenRefreshed = delegate { };
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="RefreshTokenHandler"/> class.
+        /// Initializes a new instance of the <see cref="RefreshTokenDelegatingHandler"/> class.
+        /// </summary>
+        /// <param name="tokenEndpoint">The token endpoint.</param>
+        /// <param name="clientId">The client identifier.</param>
+        /// <param name="clientSecret">The client secret.</param>
+        /// <param name="refreshToken">The refresh token.</param>
+        public RefreshTokenDelegatingHandler(string tokenEndpoint, string clientId, string clientSecret, string refreshToken)
+            : this(new TokenClient(tokenEndpoint, clientId, clientSecret), refreshToken)
+        {}
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RefreshTokenDelegatingHandler"/> class.
+        /// </summary>
+        /// <param name="tokenEndpoint">The token endpoint.</param>
+        /// <param name="clientId">The client identifier.</param>
+        /// <param name="clientSecret">The client secret.</param>
+        /// <param name="refreshToken">The refresh token.</param>
+        /// <param name="accessToken">The access token.</param>
+        public RefreshTokenDelegatingHandler(string tokenEndpoint, string clientId, string clientSecret, string refreshToken, string accessToken)
+            : this(new TokenClient(tokenEndpoint, clientId, clientSecret), refreshToken, accessToken)
+        {}
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RefreshTokenDelegatingHandler"/> class.
+        /// </summary>
+        /// <param name="tokenEndpoint">The token endpoint.</param>
+        /// <param name="clientId">The client identifier.</param>
+        /// <param name="clientSecret">The client secret.</param>
+        /// <param name="refreshToken">The refresh token.</param>
+        /// <param name="innerHandler">The inner handler.</param>
+        public RefreshTokenDelegatingHandler(string tokenEndpoint, string clientId, string clientSecret, string refreshToken, HttpMessageHandler innerHandler)
+            : this(new TokenClient(tokenEndpoint, clientId, clientSecret), refreshToken, innerHandler)
+        {}
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RefreshTokenDelegatingHandler"/> class.
         /// </summary>
         /// <param name="tokenEndpoint">The token endpoint.</param>
         /// <param name="clientId">The client identifier.</param>
@@ -90,24 +123,60 @@ namespace IdentityModel.Client
         /// <param name="refreshToken">The refresh token.</param>
         /// <param name="accessToken">The access token.</param>
         /// <param name="innerHandler">The inner handler.</param>
-        public RefreshTokenHandler(string tokenEndpoint, string clientId, string clientSecret, string refreshToken, string accessToken = null, HttpMessageHandler innerHandler = null)
+        public RefreshTokenDelegatingHandler(string tokenEndpoint, string clientId, string clientSecret, string refreshToken, string accessToken, HttpMessageHandler innerHandler)
             : this(new TokenClient(tokenEndpoint, clientId, clientSecret), refreshToken, accessToken, innerHandler)
-        { }
+        {}
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="RefreshTokenHandler"/> class.
+        /// Initializes a new instance of the <see cref="RefreshTokenDelegatingHandler"/> class.
+        /// </summary>
+        /// <param name="client">The client.</param>
+        /// <param name="refreshToken">The refresh token.</param>
+        public RefreshTokenDelegatingHandler(TokenClient client, string refreshToken)
+        {
+            _tokenClient = client;
+            _refreshToken = refreshToken;
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RefreshTokenDelegatingHandler"/> class.
+        /// </summary>
+        /// <param name="client">The client.</param>
+        /// <param name="refreshToken">The refresh token.</param>
+        /// <param name="accessToken">The access token.</param>
+        public RefreshTokenDelegatingHandler(TokenClient client, string refreshToken, string accessToken)
+        {
+            _tokenClient = client;
+            _refreshToken = refreshToken;
+            _accessToken = accessToken;
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RefreshTokenDelegatingHandler"/> class.
+        /// </summary>
+        /// <param name="client">The client.</param>
+        /// <param name="refreshToken">The refresh token.</param>
+        /// <param name="innerHandler">The inner handler.</param>
+        public RefreshTokenDelegatingHandler(TokenClient client, string refreshToken, HttpMessageHandler innerHandler)
+            :base(innerHandler)
+        {
+            _tokenClient = client;
+            _refreshToken = refreshToken;
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="RefreshTokenDelegatingHandler"/> class.
         /// </summary>
         /// <param name="client">The client.</param>
         /// <param name="refreshToken">The refresh token.</param>
         /// <param name="accessToken">The access token.</param>
         /// <param name="innerHandler">The inner handler.</param>
-        public RefreshTokenHandler(TokenClient client, string refreshToken, string accessToken = null, HttpMessageHandler innerHandler = null)
+        public RefreshTokenDelegatingHandler(TokenClient client, string refreshToken, string accessToken, HttpMessageHandler innerHandler)
+            : base(innerHandler)
         {
             _tokenClient = client;
             _refreshToken = refreshToken;
             _accessToken = accessToken;
-
-            InnerHandler = innerHandler ?? new HttpClientHandler();
         }
 
         /// <summary>

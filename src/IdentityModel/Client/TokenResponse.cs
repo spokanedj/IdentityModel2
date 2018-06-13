@@ -33,7 +33,8 @@ namespace IdentityModel.Client
         /// </summary>
         /// <param name="statusCode">The status code.</param>
         /// <param name="reason">The reason.</param>
-        public TokenResponse(HttpStatusCode statusCode, string reason) : base(statusCode, reason)
+        /// <param name="content">The response body</param>
+        public TokenResponse(HttpStatusCode statusCode, string reason, string content) : base(statusCode, reason, content)
         {
         }
 
@@ -83,7 +84,7 @@ namespace IdentityModel.Client
         /// <value>
         /// The expires in.
         /// </value>
-        public long ExpiresIn
+        public int ExpiresIn
         {
             get
             {
@@ -91,9 +92,9 @@ namespace IdentityModel.Client
 
                 if (value != null)
                 {
-                    if (long.TryParse(value, out long longValue))
+                    if (int.TryParse(value, out var theValue))
                     {
-                        return longValue;
+                        return theValue;
                     }
                 }
 

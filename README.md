@@ -58,15 +58,15 @@ var introspectionClient = new IntrospectionClient(
 var response = await introspectionClient.SendAsync(
     new IntrospectionRequest { Token = token });
 
-var isActice = response.IsActive;
+var isActive = response.IsActive;
 var claims = response.Claims;
 ```
 
-### AuthorizeRequest
-Helper class for creating authorize request URLs (e.g. for code and implicit flow).
+### RequestUrl
+Helper class for creating request URLs (e.g. for authorize and end_session).
 
 ```csharp
-var request = new AuthorizeRequest(doc.AuthorizationEndpoint);
+var request = new RequestUrl(doc.AuthorizationEndpoint);
 var url = request.CreateAuthorizeUrl(
     clientId:     "client",
     responseType: OidcConstants.ResponseTypes.CodeIdToken,
